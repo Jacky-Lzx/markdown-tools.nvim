@@ -152,6 +152,40 @@ equal(tools.link_at(), nil)
 api.nvim_win_set_cursor(0, { 4, 5 })
 equal(tools.follow_link(), false)
 
+-- Shared link spans support vault indexing and lossless reference rewrites.
+local link_lines = {
+  '![img](<a file.png> "caption") [[note#Heading|Label]]',
+  "[a][ref]",
+  '[ref]: note.md#anchor "title"',
+  "`[[skip]]`",
+}
+local parsed = require("markdown_tools.links").parse(link_lines)
+equal(#parsed, 3)
+for _, link in ipairs(parsed) do
+  equal(link_lines[link.target_row]:sub(link.target_first, link.target_last), link.target)
+end
+equal(parsed[1].embed, true)
+equal(parsed[3].target_row, 3)
+buffer({ "[target](#here)", "# Here" }, 1, 3)
+local delegated
+tools.setup({
+  link_handler = function(link, ctx)
+    delegated = { link.target, ctx.buf }
+    return true
+  end,
+})
+assert(tools.follow_link())
+equal(delegated, { "#here", api.nvim_get_current_buf() })
+equal(vim.fn.line("."), 1)
+tools.setup({
+  link_handler = function()
+    return nil
+  end,
+})
+assert(tools.follow_link())
+equal(vim.fn.line("."), 2)
+tools.setup()
+
 -- Protected TOC examples, nested tasks, and edits preserving unrelated marks.
 buffer({ "```md", "<!-- markdown-tools:toc -->", "example", "<!-- /markdown-tools:toc -->", "```", "", "# Heading" }, 6)
 assert(tools.toc())

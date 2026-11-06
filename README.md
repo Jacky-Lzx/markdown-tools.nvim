@@ -45,6 +45,15 @@ Lua functions use snake_case names, e.g. `next_heading(count)`.
 | `Info` | Inspect attached buffers and options. |
 
 Lua also exposes `headings(buf?)`, `link_at()`, `setup(opts?)` and `dispose()`.
+`require('markdown_tools.links').parse(lines)` returns links with one-based byte
+spans (`row`, `first`, `last`, `target_row`, `target_first`, `target_last`) and
+`target`, `wiki`, `embed`, `reference`. Reference occurrences point to the
+definition's target span, supporting lossless vault indexing and rewrites.
+`mask(line)` hides escaped syntax and inline code without changing byte offsets.
+Optional `setup({link_handler = function(link, ctx) ... end})` delegates following:
+return nil for the default handler, true when handled (including queued work),
+or false plus an error reason. `ctx` contains `buf` and `file`; this adapter does
+not introduce a vault dependency.
 Edits return `false, reason` when their target is missing or invalid; command
 wrappers report the reason through `vim.notify`. A structural edit is one undo
 step and only replaces the changed span. Navigation preserves folds and jump

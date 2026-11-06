@@ -1,7 +1,7 @@
 local D = require("markdown_tools.document")
 local M = {}
 
-local function decode(text)
+function M.decode(text)
   return (text:gsub("%%(%x%x)", function(hex)
     return string.char(tonumber(hex, 16))
   end))
@@ -10,53 +10,17 @@ local function normalize(text)
   return vim.trim(text):gsub("%s+", " "):lower()
 end
 
-local function destination(text)
-  text = vim.trim(text)
-  if text:sub(1, 1) == "<" then
-    return text:match("^<(.-)>")
-  end
-  local depth, escape = 0, false
-  for index = 1, #text do
-    local char = text:sub(index, index)
-    if escape then
-      escape = false
-    elseif char == "\\" then
-      escape = true
-    elseif char == "(" then
-      depth = depth + 1
-    elseif char == ")" then
-      depth = depth - 1
-    elseif char:match("%s") and depth == 0 then
-      return text:sub(1, index - 1)
-    end
-  end
-  return text
-end
-
-function M.at()
-  local lines, row, col = D.lines(), vim.fn.line("."), vim.fn.col(".")
-  local scan = D.scan(lines)
-  if scan.excluded[row] then
-    return
-  end
-  local line, candidates, definitions = lines[row], {}, {}
-  for r, text in ipairs(lines) do
-    if not scan.excluded[r] then
-      local label, target = text:match("^ ? ? ?%[([^%]]+)%]:%s*(.+)$")
-      if label then
-        definitions[normalize(label)] = destination(target)
-      end
-    end
-  end
-  -- Hide inline-code spans while keeping byte positions stable.
+-- Byte-preserving mask: escaped syntax and matched inline code are not links.
+function M.mask(line)
   local masked, index = line, 1
   while index <= #line do
     if line:sub(index, index) == "\\" then
-      masked = masked:sub(1, index - 1) .. "  " .. masked:sub(index + 2)
-      index = index + 2
+      local length = math.min(2, #line - index + 1)
+      masked = masked:sub(1, index - 1) .. string.rep(" ", length) .. masked:sub(index + length)
+      index = index + length
     elseif line:sub(index, index) == "`" then
-      local run = line:match("^`+", index)
-      local search, close = index + #run, nil
+      local run, close = line:match("^`+", index), nil
+      local search = index + #run
       while search <= #line do
         local a, b = line:find("`+", search)
         if not a then
@@ -76,84 +40,187 @@ function M.at()
       index = index + 1
     end
   end
-  local function add(a, b, target, wiki)
-    if target then
-      candidates[#candidates + 1] = { first = a, last = b, target = target, wiki = wiki }
+  return masked
+end
+
+local function destination(text)
+  local first = #(text:match("^%s*") or "") + 1
+  if text:sub(first, first) == "<" then
+    local last = text:find(">", first + 1, true)
+    if last then
+      return text:sub(first + 1, last - 1), first + 1, last - 1
     end
+    return
   end
-  index = 1
-  while index <= #masked do
-    local a, b, target = masked:find("%[%[([^%]]+)%]%]", index)
-    if not a then
+  local depth, escape, last = 0, false, #text
+  for index = first, #text do
+    local char = text:sub(index, index)
+    if escape then
+      escape = false
+    elseif char == "\\" then
+      escape = true
+    elseif char == "(" then
+      depth = depth + 1
+    elseif char == ")" then
+      depth = depth - 1
+    elseif char:match("%s") and depth == 0 then
+      last = index - 1
       break
     end
-    add(a, b, target:match("^([^|]+)"), true)
-    index = b + 1
   end
-  index = 1
-  while index <= #masked do
-    local a, b, label = masked:find("%[([^%[%]]*)%]", index)
-    if not a then
-      break
-    end
-    local next_char = masked:sub(b + 1, b + 1)
-    if next_char == "(" then
-      local depth, ending, escape = 1, b + 2, false
-      while ending <= #masked and depth > 0 do
-        local char = line:sub(ending, ending)
-        if escape then
-          escape = false
-        elseif char == "\\" then
-          escape = true
-        elseif char == "(" then
-          depth = depth + 1
-        elseif char == ")" then
-          depth = depth - 1
+  return text:sub(first, last), first, last
+end
+
+-- One-based byte spans; reference occurrences point to their definition's target span.
+function M.parse(lines)
+  local scan, definitions, links = D.scan(lines), {}, {}
+  for row, line in ipairs(lines) do
+    if not scan.excluded[row] then
+      local label, offset, rest = line:match("^ ? ? ?%[([^%]]+)%]:%s*()(.*)$")
+      if label then
+        local target, first, last = destination(rest)
+        if target then
+          definitions[normalize(label)] = {
+            target = target,
+            target_row = row,
+            target_first = offset + first - 1,
+            target_last = offset + last - 1,
+          }
         end
-        ending = ending + 1
       end
-      if depth == 0 then
-        add(a, ending - 1, destination(line:sub(b + 2, ending - 2)))
-      end
-    elseif next_char == "[" then
-      local ending, ref = masked:match("()%[([^%]]*)%]", b + 1)
-      if ending == b + 1 then
-        add(a, b + #ref + 2, definitions[normalize(ref ~= "" and ref or label)])
-      end
-    elseif masked:sub(a - 1, a - 1) ~= "[" and next_char ~= "]" then
-      add(a, b, definitions[normalize(label)])
-    end
-    index = b + 1
-  end
-  for a, target, b in masked:gmatch("()<([^<>%s]+)>()") do
-    if target:match("^%a[%w+.-]*:") then
-      add(a, b - 1, target)
     end
   end
-  for _, link in ipairs(candidates) do
-    if col >= link.first and col <= link.last then
+  for row, line in ipairs(lines) do
+    if not scan.excluded[row] and not line:match("^ ? ? ?%[[^%]]+%]:") then
+      local masked, occupied = M.mask(line), {}
+      local function add(a, b, target, first, last, wiki, definition)
+        if not target then
+          return
+        end
+        local item = {
+          row = row,
+          first = a,
+          last = b,
+          target = target,
+          wiki = wiki or false,
+          target_row = row,
+          target_first = first,
+          target_last = last,
+        }
+        if definition then
+          for k, v in pairs(definition) do
+            item[k] = v
+          end
+          item.reference = true
+        end
+        if a > 1 and line:sub(a - 1, a - 1) == "!" then
+          item.first = a - 1
+          item.embed = true
+        end
+        links[#links + 1] = item
+        for i = item.first, b do
+          occupied[i] = true
+        end
+      end
+      local index = 1
+      while index <= #masked do
+        local a, b, raw = masked:find("%[%[([^%]]+)%]%]", index)
+        if not a then
+          break
+        end
+        local target = raw:match("^([^|]+)")
+        add(a, b, target, a + 2, a + 1 + #target, true)
+        index = b + 1
+      end
+      index = 1
+      while index <= #masked do
+        local a, b, label = masked:find("%[([^%[%]]*)%]", index)
+        if not a then
+          break
+        end
+        if not occupied[a] then
+          local next_char = masked:sub(b + 1, b + 1)
+          if next_char == "(" then
+            local depth, ending, escape, angle = 1, b + 2, false, false
+            while ending <= #masked and depth > 0 do
+              local char = line:sub(ending, ending)
+              if escape then
+                escape = false
+              elseif char == "\\" then
+                escape = true
+              elseif char == "<" then
+                angle = true
+              elseif char == ">" then
+                angle = false
+              elseif not angle and char == "(" then
+                depth = depth + 1
+              elseif not angle and char == ")" then
+                depth = depth - 1
+              end
+              ending = ending + 1
+            end
+            if depth == 0 then
+              local target, first, last = destination(line:sub(b + 2, ending - 2))
+              if target then
+                add(a, ending - 1, target, b + 1 + first, b + 1 + last)
+              end
+            end
+          elseif next_char == "[" then
+            local start, ref = masked:match("()%[([^%]]*)%]", b + 1)
+            local def = start == b + 1 and definitions[normalize(ref ~= "" and ref or label)]
+            if def then
+              add(a, b + #ref + 2, def.target, nil, nil, false, def)
+            end
+          else
+            local def = definitions[normalize(label)]
+            if def then
+              add(a, b, def.target, nil, nil, false, def)
+            end
+          end
+        end
+        index = b + 1
+      end
+      for a, target, b in masked:gmatch("()<([^<>%s]+)>()") do
+        if not occupied[a] and target:match("^%a[%w+.-]*:") then
+          add(a, b - 1, target, a + 1, b - 2)
+        end
+      end
+    end
+  end
+  table.sort(links, function(a, b)
+    return a.row == b.row and a.first < b.first or a.row < b.row
+  end)
+  return links
+end
+
+function M.at()
+  local row, col = vim.fn.line("."), vim.fn.col(".")
+  for _, link in ipairs(M.parse(D.lines())) do
+    if link.row == row and col >= link.first and col <= link.last then
       return link
     end
   end
 end
 
-function M.follow()
+function M.follow(handler)
   local link = M.at()
   if not link then
     return false, "No Markdown link under cursor"
   end
+  if handler then
+    local handled, err =
+      handler(vim.deepcopy(link), { buf = vim.api.nvim_get_current_buf(), file = vim.api.nvim_buf_get_name(0) })
+    if handled ~= nil then
+      return handled, err
+    end
+  end
   local target = link.target:gsub("\\([%p])", "%1")
   if target:match("^%a[%w+.-]*:") and not target:match("^%a:[/\\]") then
     local _, err = vim.ui.open(target)
-    if err then
-      return false, err
-    end
-    return true
+    return err == nil, err
   end
   local file, anchor = target:match("^([^#]*)#(.*)$")
-  file = decode(file or target)
-  anchor = anchor and decode(anchor)
-  local buf = vim.api.nvim_get_current_buf()
+  file, anchor = M.decode(file or target), anchor and M.decode(anchor)
   if file ~= "" then
     if not vim.startswith(file, "/") and not file:match("^%a:[/\\]") then
       local current = vim.api.nvim_buf_get_name(0)
@@ -167,12 +234,10 @@ function M.follow()
     if not stat or stat.type ~= "file" then
       return false, "Linked file does not exist: " .. file
     end
-    -- Reuse the normal edit path, preserving modified-buffer protection and autocommands.
     vim.cmd.edit(vim.fn.fnameescape(file))
-    buf = vim.api.nvim_get_current_buf()
   end
   if anchor and anchor ~= "" then
-    for _, h in ipairs(D.scan(D.lines(buf)).headings) do
+    for _, h in ipairs(D.scan(D.lines()).headings) do
       if h.slug == anchor or (link.wiki and h.title == anchor) then
         D.jump(h.row)
         return true
@@ -182,5 +247,4 @@ function M.follow()
   end
   return true
 end
-
 return M

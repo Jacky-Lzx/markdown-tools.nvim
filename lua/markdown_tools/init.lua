@@ -1,6 +1,6 @@
 local M = {}
 local api = vim.api
-local defaults = { filetypes = { "markdown", "markdown.mdx" }, preview = false, export = false }
+local defaults = { filetypes = { "markdown", "markdown.mdx" }, preview = false, export = false, link_handler = false }
 local options = vim.deepcopy(defaults)
 local attached, group = {}, nil
 local function warn(message)
@@ -47,7 +47,7 @@ function M.toc()
   return edit("toc")
 end
 function M.follow_link()
-  return require("markdown_tools.links").follow()
+  return require("markdown_tools.links").follow(options.link_handler)
 end
 function M.format_table()
   return require("markdown_tools.tables").edit("format")
@@ -207,7 +207,7 @@ function M.setup(opts)
       error("filetypes must contain strings")
     end
   end
-  for _, name in ipairs({ "preview", "export" }) do
+  for _, name in ipairs({ "preview", "export", "link_handler" }) do
     if config[name] ~= false and type(config[name]) ~= "function" then
       error(name .. " must be false or a function")
     end
