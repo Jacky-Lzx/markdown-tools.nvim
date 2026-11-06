@@ -1,0 +1,23 @@
+*markdown-tools.txt*  Markdown structural editing
+
+See README.md for configuration, command and syntax coverage.
+
+SETUP                                                  *markdown-tools-setup*
+  require('markdown_tools').setup({ filetypes = { 'markdown', 'markdown.mdx' } })
+
+COMMANDS                                               *markdown-tools*
+All commands are buffer-local and use the MarkdownTools prefix:
+  ToggleCheckbox (line range), InsertItem, Renumber,
+  NextHeading, PreviousHeading, PromoteHeading, DemoteHeading, Outline, Toc,
+  FollowLink, FormatTable, InsertRow, DeleteRow, InsertColumn, DeleteColumn,
+  NextCell, PreviousCell, Preview, Export, Info.
+Normal <Plug> endpoints use the same full names in parentheses.
+
+No physical keys are mapped. Enter and Tab retain their existing owners.
+Preview/export require optional setup callbacks with {buf, file, filetype}.
+
+LIFECYCLE                                              *markdown-tools-dispose*
+setup() attaches existing and future ordinary Markdown buffers.
+dispose() removes owned registrations and preserves later user replacements.
+
+vim:tw=78:ts=8:noet:ft=help:norl:
