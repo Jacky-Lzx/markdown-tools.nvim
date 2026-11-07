@@ -92,3 +92,5 @@ to your configuration and should be buffer-local.
 stylua --check lua tests
 TMPDIR=/private/tmp nvim --clean --headless -i NONE -l tests/run.lua
 ```
+
+[Test workflow](tests/README.md): registered suites, filtering, required fixtures and retained failure evidence.
