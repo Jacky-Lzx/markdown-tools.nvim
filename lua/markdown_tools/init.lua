@@ -19,6 +19,10 @@ local function edit(name, ...)
   return require("markdown_tools.edit")[name](...)
 end
 
+function M.in_math(opts)
+  return require("markdown_tools.context").in_math(opts)
+end
+
 function M.toggle_checkbox(first, last)
   return edit("toggle_checkbox", first, last)
 end

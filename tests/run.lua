@@ -238,5 +238,20 @@ end
 assert(pcall(tools.outline))
 vim.ui.select = select
 vim.fn.delete(temp, "rf")
+
+buffer({ "$x$ and `$code$` and \\$escaped", "```tex", "$hidden$", "```", "$$", "display", "$$" })
+equal(tools.in_math({ pos = { 0, 1 } }), true)
+equal(tools.in_math({ pos = { 0, 5 } }), false)
+equal(tools.in_math({ pos = { 0, 12 } }), false)
+equal(tools.in_math({ pos = { 2, 2 } }), false)
+equal(tools.in_math({ pos = { 5, 2 } }), true)
+api.nvim_buf_set_lines(0, 0, -1, false, { "plain" })
+equal(tools.in_math({ pos = { 0, 1 } }), false)
+local other = api.nvim_create_buf(false, true)
+api.nvim_buf_set_lines(other, 0, -1, false, { "$y$" })
+equal(tools.in_math({ bufnr = other, pos = { 0, 1 } }), true)
+equal(tools.in_math({ bufnr = other }), false)
+api.nvim_buf_delete(other, { force = true })
+
 print("PASS markdown-tools: " .. count .. " assertions")
 vim.cmd("qa!")

@@ -59,3 +59,5 @@ retained failure evidence. Local development overrides belong in your package
 manager configuration; public installation uses the repository above.
 
 [License](LICENSE).
+
+Read-only `require("markdown_tools").in_math({ bufnr = buf, pos = { row, col } })` queries inline `$...$` and display `$$...$$` math without a parser or editing setup. Positions use zero-based bytes; non-current buffers require `pos`. Code, front matter and comments are excluded.
