@@ -165,7 +165,7 @@ local function attach(buf)
       if method == "toggle_checkbox" then
         invoke(M[method], args.line1, args.line2)
       elseif method == "info" then
-        vim.notify(vim.inspect(M.info()), vim.log.levels.INFO, { title = "Markdown tools" })
+        vim.notify(vim.inspect(M.info()), vim.log.levels.INFO, { title = "Markdown tools", filetype = "lua" })
       else
         invoke(M[method])
       end
@@ -174,7 +174,7 @@ local function attach(buf)
     if not mapping(buf, lhs) then
       vim.keymap.set("n", lhs, function()
         if method == "info" then
-          vim.notify(vim.inspect(M.info()), vim.log.levels.INFO, { title = "Markdown tools" })
+          vim.notify(vim.inspect(M.info()), vim.log.levels.INFO, { title = "Markdown tools", filetype = "lua" })
         else
           invoke(M[method])
         end
