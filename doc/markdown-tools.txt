@@ -1,23 +1,199 @@
-*markdown-tools.txt*  Markdown structural editing
+*markdown-tools.txt*	Markdown structural editing without a parser, server or vault.
 
-See README.md for configuration, command and syntax coverage.
+==============================================================================
+CONTENTS                                                      *markdown-tools*
 
-SETUP                                                  *markdown-tools-setup*
-  require('markdown_tools').setup({ filetypes = { 'markdown', 'markdown.mdx' } })
+  Quick start         |markdown-tools-quickstart|
+  Commands            |markdown-tools-commands|
+  Options             |markdown-tools-options|
+  Lua API             |markdown-tools-api|
+  Lifecycle           |markdown-tools-lifecycle|
+  Troubleshooting     |markdown-tools-troubleshooting|
 
-COMMANDS                                               *markdown-tools*
-All commands are buffer-local and use the MarkdownTools prefix:
-  ToggleCheckbox (line range), InsertItem, Renumber,
-  NextHeading, PreviousHeading, PromoteHeading, DemoteHeading, Outline, Toc,
-  FollowLink, FormatTable, InsertRow, DeleteRow, InsertColumn, DeleteColumn,
-  NextCell, PreviousCell, Preview, Export, Info.
-Normal <Plug> endpoints use the same full names in parentheses.
+==============================================================================
+QUICK START                                        *markdown-tools-quickstart*
+
+Requires Neovim 0.11+. No runtime dependencies. Preview and export are
+optional callbacks supplied by your configuration.
+
+>lua
+    require("markdown_tools").setup({})
+<
+
+The example above selects a small working setup. Full defaults, options and
+feature contracts are documented in this reference. Public installation and
+package-manager examples are in README.md.
+
+==============================================================================
+TROUBLESHOOTING                               *markdown-tools-troubleshooting*
+
+Check the minimum Neovim version and feature dependencies first. Global
+mappings shown in the README are configuration examples unless explicitly
+documented as plugin defaults. Keep one owner for each overridden UI or
+mapping.
+
+==============================================================================
+COMMANDS                                             *markdown-tools-commands*
+
+:MarkdownToolsToggleCheckbox
+:MarkdownToolsOutline
+:MarkdownToolsInfo
+
+See the detailed reference below for arguments and feature-specific commands.
+
+==============================================================================
+LUA API                                                   *markdown-tools-api*
+
+The public entry module is "markdown_tools". See the function signatures and
+contracts in the detailed reference below. Configuration owns personal global
+mappings.
+
+See the reference sections below for configuration, commands and syntax
+coverage.
+
+SETUP                                                   *markdown-tools-setup*
+  require('markdown_tools').setup({ filetypes = { 'markdown', 'markdown.mdx' }
+      })
+
+COMMANDS
+All commands are buffer-local and use the MarkdownTools prefix: ToggleCheckbox
+(line range), InsertItem, Renumber, NextHeading, PreviousHeading,
+PromoteHeading, DemoteHeading, Outline, Toc, FollowLink, FormatTable,
+InsertRow, DeleteRow, InsertColumn, DeleteColumn, NextCell, PreviousCell,
+Preview, Export, Info. Normal <Plug> endpoints use the same full names in
+parentheses.
 
 No physical keys are mapped. Enter and Tab retain their existing owners.
 Preview/export require optional setup callbacks with {buf, file, filetype}.
 
-LIFECYCLE                                              *markdown-tools-dispose*
-setup() attaches existing and future ordinary Markdown buffers.
-dispose() removes owned registrations and preserves later user replacements.
+LIFECYCLE                                           *markdown-tools-lifecycle*
+                                                      *markdown-tools-dispose*
+setup() attaches existing and future ordinary Markdown buffers. dispose()
+removes owned registrations and preserves later user replacements.
+
+==============================================================================
+BEHAVIOR AND EXAMPLES         *markdown-tools-reference-behavior-and-examples*
+
+Dependency-free Markdown editing for Neovim 0.11+. Configuration owns physical
+keys; this plugin owns structural edits, buffer commands and `<Plug>`
+endpoints. Tree-sitter, a language server and a vault are not required.
+
+>lua
+    require('markdown_tools').setup({
+      filetypes = { 'markdown', 'markdown.mdx' },
+      -- Optional adapters, called only by explicit commands:
+      preview = function(ctx) require('peek').open() end,
+      export = function(ctx) -- delegate ctx.file to your task runner
+      end,
+    })
+    vim.keymap.set('n', '<localleader>Mx', '<Plug>(MarkdownToolsToggleCheckbox)')
+<
+
+Add this directory to `runtimepath` using your plugin manager. `setup()`
+attaches existing ordinary Markdown buffers and future FileType events. No
+default user keys, Insert-mode Enter, Tab, renderer, opener override or global
+options are installed. The adapters receive `{buf, file, filetype}`. They are
+disabled by default; optional plugins load only when an adapter invokes them.
+
+==============================================================================
+COMMANDS AND API                   *markdown-tools-reference-commands-and-api*
+
+Commands are buffer-local and start with `MarkdownTools`. Normal-mode `<Plug>`
+endpoints use the full command name, e.g. `<Plug>(MarkdownToolsNextHeading)`.
+Lua functions use snake_case names, e.g. `next_heading(count)`.
+
+  Command suffix — Behavior
+  `ToggleCheckbox` — Toggle existing tasks, add a checkbox to a list item, or
+      turn text into a task. Accepts an Ex line range.
+  `InsertItem` — Insert a sibling after the current item's indented children,
+      retain bullet/number/quote prefix, reset checkbox, enter Insert mode.
+  `Renumber` — Renumber the current contiguous numbered list at its
+      indentation, retaining the first number and nested items.
+  `NextHeading` / `PreviousHeading` — Move by headings; Normal `<Plug>`
+      endpoints honor counts and set jump history.
+  `PromoteHeading` / `DemoteHeading` — Change the enclosing heading and
+      descendants by one level; reject the entire edit outside levels 1–6.
+      Setext headings become ATX.
+  `Outline` — Select a heading through `vim.ui.select`.
+  `Toc` — Insert a TOC before the cursor, or refresh the existing marked TOC.
+      Duplicate headings get distinct anchors.
+  `FollowLink` — Follow the Markdown/wiki link at the cursor, including local
+      file anchors, reference links and URI autolinks.
+  `FormatTable` — Align a rectangular pipe table by display width, preserving
+      colon alignment.
+  `InsertRow` / `DeleteRow` — Add a body row after the current row, or delete
+      a body row.
+  `InsertColumn` / `DeleteColumn` — Add a column after the current cell, or
+      delete a column (retain at least one).
+  `NextCell` / `PreviousCell` — Move through existing cells with counts,
+      skipping the separator.
+  `Preview` / `Export` — Invoke the configured adapter.
+  `Info` — Inspect attached buffers and options.
+
+Lua also exposes `headings(buf?)`, `link_at()`, `setup(opts?)` and
+`dispose()`. `require('markdown_tools.links').parse(lines)` returns links with
+one-based byte spans (`row`, `first`, `last`, `target_row`, `target_first`,
+`target_last`) and `target`, `wiki`, `embed`, `reference`. Reference
+occurrences point to the definition's target span, supporting lossless vault
+indexing and rewrites. `mask(line)` hides escaped syntax and inline code
+without changing byte offsets. Optional `setup({link_handler = function(link,
+ctx) ... end})` delegates following: return nil for the default handler, true
+when handled (including queued work), or false plus an error reason. `ctx`
+contains `buf` and `file`; this adapter does not introduce a vault dependency.
+Edits return `false, reason` when their target is missing or invalid; command
+wrappers report the reason through `vim.notify`. A structural edit is one undo
+step and only replaces the changed span. Navigation preserves folds and jump
+history. It does not create missing link targets or renumber after insertion;
+run `Renumber` when you want to normalize a list.
+
+For Visual task toggling, bind an explicit line range:
+
+>lua
+    vim.keymap.set('x', '<localleader>Mx', ":<C-u>'<,'>MarkdownToolsToggleCheckbox<CR>")
+<
+
+TOC regions use `<!-- markdown-tools:toc -->` and `<!-- /markdown-tools:toc
+-->`; malformed or multiple regions are rejected. Plain ATX/Setext headings
+use GitHub-style lowercase anchors, preserve Unicode, remove punctuation and
+suffix duplicates. Existing custom HTML IDs are not used.
+
+The lightweight scanner supports ordinary Markdown documents: fenced/indented
+code, front matter and HTML comments are excluded from edits. It is not a full
+CommonMark/MDX parser. Headings inside lists/quotes, multiline link labels,
+multiline reference definitions, raw HTML/JSX blocks, and vault-wide wiki-link
+search are outside its scope. Wiki paths resolve relative to the current file;
+Obsidian remains responsible for vault behavior. Table cells may contain
+escaped pipes or matched backtick code spans; ragged tables are rejected
+without edits. Image display/insertion, snippets, pairs, LSP, formatting and
+rendering stay in their owning plugins.
+
+Repeated setup replaces owned registrations. Invalid options leave the running
+setup intact; disposal and filetype changes remove only unchanged owned
+commands and mappings, preserving later user replacements. Physical user
+mappings belong to your configuration and should be buffer-local.
+
+==============================================================================
+DEVELOPMENT                             *markdown-tools-reference-development*
+
+>
+    stylua --check lua tests
+    TMPDIR=/private/tmp nvim --clean --headless -i NONE -l tests/run.lua
+<
+
+Test workflow (tests/README.md): registered suites, filtering, required
+fixtures and retained failure evidence.
+
+==============================================================================
+OPTION DEFAULTS                                       *markdown-tools-options*
+                                                     *markdown-tools-defaults*
+
+filetypes: string[] = {"markdown", "markdown.mdx"}. preview: function|false =
+false. export: function|false = false. link_handler: function|false = false.
+
+Adapters receive {buf, file, filetype}. link_handler(link, ctx) returns nil
+for the default handler, true when handled, or false and an error.
+setup(opts?) replaces configuration and attached buffer registrations;
+dispose() removes owned registrations. No callback installs global physical
+keys.
 
 vim:tw=78:ts=8:noet:ft=help:norl:
